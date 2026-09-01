@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ネットワーク攻撃シミュレータ</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --s1: #2a78d6;   /* 最大連結成分 / S(q)/N */
+  --s2: #eb6834;   /* 第二連結成分 / ⟨s⟩ */
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --ink-muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --s1: #3987e5;
+    --s2: #d95926;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --ink-muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --s1: #3987e5;
+  --s2: #d95926;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+}
+main {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+header h1 {
+  font-size: 22px;
+  font-weight: 650;
+  margin: 0 0 4px;
+}
+header p {
+  margin: 0 0 20px;
+  color: var(--ink-2);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+/* ---- コントロール ---- */
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+  margin-bottom: 16px;
+}
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field > span { font-size: 12px; color: var(--ink-2); }
+.field select, .field input[type="number"] {
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--axis);
+  border-radius: 6px;
+  padding: 5px 8px;
+  min-width: 72px;
+}
+button {
+  font: inherit;
+  border-radius: 6px;
+  padding: 7px 16px;
+  cursor: pointer;
+  border: 1px solid var(--axis);
+  background: var(--surface);
+  color: var(--ink);
+}
+button.primary {
+  background: var(--s1);
+  border-color: var(--s1);
+  color: #ffffff;
+  font-weight: 600;
+}
+button:disabled { opacity: 0.5; cursor: default; }
+
+/* ---- q スライダー ---- */
+#slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+#slider-row input[type="range"] {
+  flex: 1;
+  min-width: 120px;
+  accent-color: var(--s1);
+}
+#q-readout {
+  font-variant-numeric: tabular-nums;
+  min-width: 15em;
+  color: var(--ink-2);
+}
+#q-readout strong { color: var(--ink); font-weight: 650; }
+
+/* ---- 統計タイル ---- */
+#tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.tile .label { font-size: 12px; color: var(--ink-2); }
+.tile .value { font-size: 22px; font-weight: 600; line-height: 1.3; }
+#tiles-note {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin: 0 0 16px;
+}
+
+/* ---- 可視化グリッド ---- */
+#viz {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.card h2 {
+  font-size: 14px;
+  font-weight: 650;
+  margin: 0 0 2px;
+}
+.card .sub {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin: 0 0 10px;
+}
+#net-canvas { display: block; width: 100%; }
+#net-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+#net-legend .key {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+#net-meta { font-size: 12px; color: var(--ink-muted); margin-top: 6px; }
+#charts { display: flex; flex-direction: column; gap: 16px; }
+
+/* ---- チャート ---- */
+.chart-box { position: relative; }
+.chart-box svg { display: block; width: 100%; }
+.chart-box .overlay-rect { cursor: crosshair; }
+.gridline { stroke: var(--grid); stroke-width: 1; }
+.axisline { stroke: var(--axis); stroke-width: 1; }
+.ticktext {
+  fill: var(--ink-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.axistitle { fill: var(--ink-2); font-size: 11px; }
+.series-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.crosshair { stroke: var(--ink-muted); stroke-width: 1; }
+.qline { stroke: var(--axis); stroke-width: 1; }
+.qdot { stroke: var(--surface); stroke-width: 2; }
+.tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  white-space: nowrap;
+  z-index: 5;
+  display: none;
+}
+.tooltip .tt-q { color: var(--ink-2); margin-bottom: 2px; }
+.tooltip .tt-row { display: flex; align-items: center; gap: 6px; }
+.tooltip .tt-key { display: inline-block; width: 12px; height: 2px; border-radius: 1px; }
+.tooltip .tt-val { font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
+.tooltip .tt-name { color: var(--ink-2); }
+
+/* ---- データ表 ---- */
+#table-details { margin-top: 16px; }
+#table-details summary { cursor: pointer; color: var(--ink-2); }
+#data-table { border-collapse: collapse; margin-top: 10px; }
+#data-table th, #data-table td {
+  padding: 3px 14px 3px 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid var(--grid);
+}
+#data-table th { color: var(--ink-2); font-weight: 600; font-size: 12px; }
+
+/* ---- ローディング ---- */
+#loader {
+  position: fixed;
+  inset: 0;
+  background: var(--page);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  z-index: 100;
+}
+#loader .spin {
+  width: 28px; height: 28px;
+  border: 3px solid var(--grid);
+  border-top-color: var(--s1);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#loader p { color: var(--ink-2); margin: 0; }
+.recomputing { opacity: 0.45; transition: opacity 0.15s; }
+
+footer {
+  margin-top: 24px;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+@media (max-width: 920px) {
+  #viz { grid-template-columns: 1fr; }
+  #tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #slider-row { flex-wrap: wrap; }
+}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>ネットワーク攻撃シミュレータ</h1>
+    <p>ノードを逐次除去したときの連結成分の崩壊を可視化します。攻撃率 q に対する最大連結成分サイズ比 S(q)/N と第二最大連結成分サイズ ⟨s⟩ を計算します（Pyodide 上の networkx で実行）。</p>
+  </header>
+
+  <div id="controls" class="card">
+    <label class="field">
+      <span>ネットワークモデル</span>
+      <select id="in-model">
+        <option value="ba" selected>Barabási–Albert（スケールフリー）</option>
+        <option value="er">Erdős–Rényi（ランダム）</option>
+        <option value="ws">Watts–Strogatz（スモールワールド）</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>ノード数 N</span>
+      <input type="number" id="in-n" value="300" min="20" max="1000" step="10">
+    </label>
+    <label class="field" data-model="ba">
+      <span>接続数 m</span>
+      <input type="number" id="in-ba-m" value="2" min="1" max="5" step="1">
+    </label>
+    <label class="field" data-model="er" hidden>
+      <span>平均次数 c</span>
+      <input type="number" id="in-er-c" value="4" min="0.5" max="12" step="0.5">
+    </label>
+    <label class="field" data-model="ws" hidden>
+      <span>隣接数 k（偶数）</span>
+      <input type="number" id="in-ws-k" value="4" min="2" max="12" step="2">
+    </label>
+    <label class="field" data-model="ws" hidden>
+      <span>再接続確率 p</span>
+      <input type="number" id="in-ws-p" value="0.1" min="0" max="1" step="0.05">
+    </label>
+    <label class="field">
+      <span>攻撃戦略</span>
+      <select id="in-strategy">
+        <option value="degree_adaptive" selected>次数標的攻撃（逐次再計算）</option>
+        <option value="degree_static">次数標的攻撃（初期次数）</option>
+        <option value="random">ランダム故障</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>試行回数</span>
+      <input type="number" id="in-trials" value="10" min="1" max="30" step="1">
+    </label>
+    <label class="field">
+      <span>乱数シード</span>
+      <input type="number" id="in-seed" value="42" step="1">
+    </label>
+    <button id="btn-run" class="primary">シミュレーション実行</button>
+  </div>
+
+  <div id="slider-row" class="card">
+    <button id="btn-play" title="崩壊過程をアニメーション表示">▶ 再生</button>
+    <button id="btn-reset" title="q = 0 に戻す">リセット</button>
+    <input type="range" id="in-q" min="0" max="300" step="1" value="0" aria-label="攻撃率 q">
+    <span id="q-readout">q = <strong>0.00</strong>（0 / 300 ノード除去）</span>
+  </div>
+
+  <div id="tiles">
+    <div class="tile card">
+      <div class="label">攻撃率 q</div>
+      <div class="value" id="tile-q">0.00</div>
+    </div>
+    <div class="tile card">
+      <div class="label">最大連結成分 S/N</div>
+      <div class="value" id="tile-s1">–</div>
+    </div>
+    <div class="tile card">
+      <div class="label">第二連結成分サイズ</div>
+      <div class="value" id="tile-s2">–</div>
+    </div>
+    <div class="tile card">
+      <div class="label">連結成分数</div>
+      <div class="value" id="tile-nc">–</div>
+    </div>
+  </div>
+  <p id="tiles-note">タイルの値は表示中のネットワーク（試行 1）の実測値です。下のグラフは全試行の平均を示します。</p>
+
+  <div id="viz">
+    <div class="card" id="net-card">
+      <h2>ネットワーク</h2>
+      <p class="sub" id="net-sub">最大連結成分をハイライト表示</p>
+      <canvas id="net-canvas"></canvas>
+      <div id="net-legend">
+        <span><span class="key" style="background: var(--s1)"></span>最大連結成分</span>
+        <span><span class="key" style="background: var(--s2)"></span>第二連結成分</span>
+        <span><span class="key" style="background: var(--ink-muted)"></span>その他の成分</span>
+        <span><span class="key" style="background: transparent; border: 1px solid var(--axis)"></span>除去済みノード</span>
+      </div>
+      <div id="net-meta"></div>
+    </div>
+    <div id="charts">
+      <div class="card">
+        <h2>最大連結成分サイズ比 S(q)/N</h2>
+        <p class="sub" id="chart1-sub">試行平均</p>
+        <div class="chart-box" id="chart-s"></div>
+      </div>
+      <div class="card">
+        <h2>第二最大連結成分サイズ ⟨s⟩</h2>
+        <p class="sub" id="chart2-sub">試行平均・臨界点付近でピークを持ちます</p>
+        <div class="chart-box" id="chart-s2"></div>
+      </div>
+    </div>
+  </div>
+
+  <details id="table-details" class="card">
+    <summary>データ表を表示（試行平均）</summary>
+    <table id="data-table">
+      <thead>
+        <tr><th>q</th><th>S(q)/N</th><th>⟨s⟩</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </details>
+
+  <footer>
+    Pyodide（ブラウザ内 Python）+ networkx で計算しています。初回読み込みには数十秒かかることがあります。
+  </footer>
+</main>
+
+<div id="loader">
+  <div class="spin"></div>
+  <p id="loader-msg">Pyodide を読み込み中…</p>
+</div>
+
+<noscript><p style="padding: 16px">このアプリの実行には JavaScript が必要です。</p></noscript>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
+<script>
+"use strict";
+
+/* ============ Python（networkx）側 ============ */
+const PYTHON_CODE = `
+import json
+import random
+import networkx as nx
+
+
+def _build_graph(model, n, p1, p2, seed):
+    if model == "er":
+        p = min(1.0, p1 / max(1, n - 1))
+        return nx.fast_gnp_random_graph(n, p, seed=seed)
+    if model == "ba":
+        m = max(1, min(int(p1), n - 1))
+        return nx.barabasi_albert_graph(n, m, seed=seed)
+    k = max(2, int(p1))
+    if k % 2 == 1:
+        k += 1
+    k = min(k, n - 1)
+    return nx.watts_strogatz_graph(n, k, p2, seed=seed)
+
+
+def _removal_order(G, strategy, rng):
+    nodes = list(G.nodes())
+    rng.shuffle(nodes)
+    if strategy == "random":
+        return nodes
+    if strategy == "degree_static":
+        deg = dict(G.degree())
+        nodes.sort(key=lambda v: deg[v], reverse=True)
+        return nodes
+    # degree_adaptive: 除去のたびに次数を再計算して最大次数ノードを選ぶ
+    deg = dict(G.degree())
+    adj = {v: set(G.neighbors(v)) for v in G.nodes()}
+    tiebreak = {v: rng.random() for v in G.nodes()}
+    remaining = set(nodes)
+    order = []
+    while remaining:
+        v = max(remaining, key=lambda x: (deg[x], tiebreak[x]))
+        order.append(v)
+        remaining.discard(v)
+        for u in adj[v]:
+            adj[u].discard(v)
+            deg[u] -= 1
+        del adj[v]
+    return order
+
+
+def _curve(G, order):
+    # 除去順を逆再生し union-find でノードを追加していくと、
+    # 全ての除去数 k について成分サイズが O(N+E) 級で求まる
+    n = G.number_of_nodes()
+    adj = [[] for _ in range(n)]
+    for u, v in G.edges():
+        adj[u].append(v)
+        adj[v].append(u)
+    parent = [-1] * n
+    size = [0] * n
+    present = [False] * n
+    cnt = {}  # 成分サイズ -> その成分数
+
+    def find(x):
+        root = x
+        while parent[root] != root:
+            root = parent[root]
+        while parent[x] != root:
+            parent[x], x = root, parent[x]
+        return root
+
+    def cnt_add(s, d):
+        c = cnt.get(s, 0) + d
+        if c:
+            cnt[s] = c
+        else:
+            cnt.pop(s, None)
+
+    S1 = [0.0] * (n + 1)
+    S2 = [0.0] * (n + 1)
+    for i in range(n - 1, -1, -1):
+        v = order[i]
+        parent[v] = v
+        size[v] = 1
+        present[v] = True
+        cnt_add(1, 1)
+        for u in adj[v]:
+            if present[u]:
+                ru = find(u)
+                rv = find(v)
+                if ru != rv:
+                    if size[ru] < size[rv]:
+                        ru, rv = rv, ru
+                    cnt_add(size[ru], -1)
+                    cnt_add(size[rv], -1)
+                    parent[rv] = ru
+                    size[ru] += size[rv]
+                    cnt_add(size[ru], 1)
+        s1 = 0
+        s2 = 0
+        for s in cnt:
+            if s > s1:
+                s2 = s1
+                s1 = s
+            elif s > s2:
+                s2 = s
+        if cnt.get(s1, 0) > 1:
+            s2 = s1
+        S1[i] = s1
+        S2[i] = s2
+    return S1, S2
+
+
+def run_simulation(params_json):
+    p = json.loads(params_json)
+    n = int(p["n"])
+    model = p["model"]
+    strategy = p["strategy"]
+    trials = max(1, int(p["trials"]))
+    seed = int(p["seed"])
+
+    G = _build_graph(model, n, float(p["p1"]), float(p["p2"]), seed)
+    n = G.number_of_nodes()
+
+    pos = nx.spring_layout(G, seed=seed)
+    xs = [float(pos[v][0]) for v in range(n)]
+    ys = [float(pos[v][1]) for v in range(n)]
+    span = max(max(xs) - min(xs), max(ys) - min(ys)) or 1.0
+    cx = (max(xs) + min(xs)) / 2.0
+    cy = (max(ys) + min(ys)) / 2.0
+    norm_pos = [
+        [(xs[v] - cx) / span + 0.5, (ys[v] - cy) / span + 0.5]
+        for v in range(n)
+    ]
+
+    sum_s1 = [0.0] * (n + 1)
+    sum_s2 = [0.0] * (n + 1)
+    first_order = None
+    for t in range(trials):
+        rng = random.Random(seed + 7919 * t + 1)
+        order = _removal_order(G, strategy, rng)
+        if first_order is None:
+            first_order = order
+        S1, S2 = _curve(G, order)
+        for k in range(n + 1):
+            sum_s1[k] += S1[k]
+            sum_s2[k] += S2[k]
+
+    result = {
+        "n": n,
+        "edges": [[int(u), int(v)] for u, v in G.edges()],
+        "pos": norm_pos,
+        "degree": [int(G.degree(v)) for v in range(n)],
+        "order": [int(v) for v in first_order],
+        "q": [k / n for k in range(n + 1)],
+        "S": [sum_s1[k] / trials / n for k in range(n + 1)],
+        "s2": [sum_s2[k] / trials for k in range(n + 1)],
+        "meta": {
+            "edges": G.number_of_edges(),
+            "avg_deg": 2.0 * G.number_of_edges() / n,
+            "trials": trials,
+        },
+    }
+    return json.dumps(result)
+`;
+
+/* ============ 状態 ============ */
+let pyodide = null;
+let pyRun = null;
+let sim = null;      // run_simulation の結果
+let curK = 0;        // 現在の除去ノード数
+let playing = false;
+let playPrev = 0;
+let playAcc = 0;
+
+const $ = (id) => document.getElementById(id);
+
+const els = {
+  loader: $("loader"),
+  loaderMsg: $("loader-msg"),
+  model: $("in-model"),
+  n: $("in-n"),
+  baM: $("in-ba-m"),
+  erC: $("in-er-c"),
+  wsK: $("in-ws-k"),
+  wsP: $("in-ws-p"),
+  strategy: $("in-strategy"),
+  trials: $("in-trials"),
+  seed: $("in-seed"),
+  run: $("btn-run"),
+  play: $("btn-play"),
+  reset: $("btn-reset"),
+  q: $("in-q"),
+  qReadout: $("q-readout"),
+  tileQ: $("tile-q"),
+  tileS1: $("tile-s1"),
+  tileS2: $("tile-s2"),
+  tileNc: $("tile-nc"),
+  canvas: $("net-canvas"),
+  netMeta: $("net-meta"),
+  viz: $("viz"),
+  tiles: $("tiles"),
+  chart1Sub: $("chart1-sub"),
+  chart2Sub: $("chart2-sub"),
+  tableBody: document.querySelector("#data-table tbody"),
+};
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+/* ============ 現在の q に対する成分分解（JS 側 union-find、スライダー応答用） ============ */
+function componentInfo(k) {
+  const n = sim.n;
+  const removed = new Uint8Array(n);
+  for (let i = 0; i < k; i++) removed[sim.order[i]] = 1;
+  const parent = new Int32Array(n);
+  const size = new Int32Array(n).fill(1);
+  for (let i = 0; i < n; i++) parent[i] = i;
+  const find = (x) => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  for (const [u, v] of sim.edges) {
+    if (removed[u] || removed[v]) continue;
+    let ru = find(u), rv = find(v);
+    if (ru !== rv) {
+      if (size[ru] < size[rv]) [ru, rv] = [rv, ru];
+      parent[rv] = ru;
+      size[ru] += size[rv];
+    }
+  }
+  let r1 = -1, r2 = -1, ncomp = 0;
+  for (let v = 0; v < n; v++) {
+    if (removed[v] || find(v) !== v) continue;
+    ncomp++;
+    if (r1 === -1 || size[v] > size[r1]) { r2 = r1; r1 = v; }
+    else if (r2 === -1 || size[v] > size[r2]) { r2 = v; }
+  }
+  // cat: 0=その他, 1=最大成分, 2=第二成分, 3=除去済み
+  const cat = new Int8Array(n);
+  for (let v = 0; v < n; v++) {
+    if (removed[v]) { cat[v] = 3; continue; }
+    const r = find(v);
+    cat[v] = r === r1 ? 1 : r === r2 ? 2 : 0;
+  }
+  return {
+    cat,
+    s1: r1 >= 0 ? size[r1] : 0,
+    s2: r2 >= 0 ? size[r2] : 0,
+    ncomp,
+  };
+}
+
+/* ============ ネットワーク描画 ============ */
+function drawNetwork() {
+  if (!sim) return;
+  const canvas = els.canvas;
+  const cssW = canvas.parentElement.clientWidth - 32;
+  const cssH = Math.min(Math.max(cssW * 0.85, 320), 560);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  canvas.style.width = cssW + "px";
+  canvas.style.height = cssH + "px";
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const info = componentInfo(curK);
+  const pad = 14;
+  const scale = Math.min(cssW, cssH) - pad * 2;
+  const ox = (cssW - scale) / 2;
+  const oy = (cssH - scale) / 2;
+  const X = (v) => ox + sim.pos[v][0] * scale;
+  const Y = (v) => oy + sim.pos[v][1] * scale;
+
+  const colGrid = cssVar("--grid");
+  const colAxis = cssVar("--axis");
+  const colMuted = cssVar("--ink-muted");
+  const colS1 = cssVar("--s1");
+  const colS2 = cssVar("--s2");
+
+  // 残存エッジ
+  ctx.strokeStyle = colGrid;
+  ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.9;
+  ctx.beginPath();
+  for (const [u, v] of sim.edges) {
+    if (info.cat[u] === 3 || info.cat[v] === 3) continue;
+    ctx.moveTo(X(u), Y(u));
+    ctx.lineTo(X(v), Y(v));
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  const base = Math.max(2.2, Math.min(6.5, 130 / Math.sqrt(sim.n)));
+  const avgDeg = Math.max(sim.meta.avg_deg, 0.5);
+  const radius = (v) => base * (0.7 + 0.45 * Math.sqrt(sim.degree[v] / avgDeg));
+
+  // 除去済み → その他 → 第二 → 最大 の順に上へ重ねる
+  for (const pass of [3, 0, 2, 1]) {
+    for (let v = 0; v < sim.n; v++) {
+      if (info.cat[v] !== pass) continue;
+      const r = pass === 3 ? Math.max(1.4, base * 0.4) : radius(v);
+      ctx.beginPath();
+      ctx.arc(X(v), Y(v), r, 0, Math.PI * 2);
+      if (pass === 3) {
+        ctx.strokeStyle = colAxis;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = pass === 1 ? colS1 : pass === 2 ? colS2 : colMuted;
+        ctx.fill();
+      }
+    }
+  }
+  return info;
+}
+
+/* ============ SVG ラインチャート ============ */
+const SVGNS = "http://www.w3.org/2000/svg";
+const chartRegistry = [];
+
+function svgEl(tag, attrs) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+  return e;
+}
+
+function niceCeil(v) {
+  if (v <= 0) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  for (const m of [1, 2, 2.5, 5, 10]) {
+    if (m * p >= v) return m * p;
+  }
+  return 10 * p;
+}
+
+function createLineChart(root, cfg) {
+  // cfg: { colorVar, seriesName, fixedYMax|null, yFmt, area }
+  const M = { top: 10, right: 14, bottom: 40, left: 46 };
+  const plotH = 190;
+  const chart = {
+    root, cfg,
+    data: null,       // { q: [], y: [] }
+    yMax: cfg.fixedYMax || 1,
+    W: 0,
+    svg: null,
+    tooltip: null,
+    parts: {},
+  };
+
+  const xPos = (q) => M.left + q * (chart.W - M.left - M.right);
+  const yPos = (y) => M.top + (1 - y / chart.yMax) * plotH;
+
+  function render() {
+    chart.W = Math.max(root.clientWidth, 220);
+    root.textContent = "";
+    const H = M.top + plotH + M.bottom;
+    const svg = svgEl("svg", {
+      viewBox: "0 0 " + chart.W + " " + H,
+      width: chart.W,
+      height: H,
+      role: "img",
+      "aria-label": cfg.seriesName,
+    });
+    chart.svg = svg;
+
+    if (chart.data && !cfg.fixedYMax) {
+      chart.yMax = niceCeil(Math.max(...chart.data.y, 1) * 1.05);
+    }
+
+    // 横グリッド + y 目盛
+    const yTicks = 5;
+    for (let i = 0; i <= yTicks; i++) {
+      const yv = (chart.yMax / yTicks) * i;
+      const py = yPos(yv);
+      if (i > 0) {
+        svg.appendChild(svgEl("line", {
+          class: "gridline", x1: M.left, x2: chart.W - M.right, y1: py, y2: py,
+        }));
+      }
+      const t = svgEl("text", {
+        class: "ticktext", x: M.left - 7, y: py + 4, "text-anchor": "end",
+      });
+      t.textContent = (cfg.yTickFmt || cfg.yFmt)(yv);
+      svg.appendChild(t);
+    }
+    // x 軸
+    const baseY = M.top + plotH;
+    svg.appendChild(svgEl("line", {
+      class: "axisline", x1: M.left, x2: chart.W - M.right, y1: baseY, y2: baseY,
+    }));
+    for (let i = 0; i <= 5; i++) {
+      const qv = i / 5;
+      const t = svgEl("text", {
+        class: "ticktext", x: xPos(qv), y: baseY + 16, "text-anchor": "middle",
+      });
+      t.textContent = qv.toFixed(1);
+      svg.appendChild(t);
+    }
+    const xt = svgEl("text", {
+      class: "axistitle",
+      x: (M.left + chart.W - M.right) / 2,
+      y: baseY + 32,
+      "text-anchor": "middle",
+    });
+    xt.textContent = "攻撃率 q";
+    svg.appendChild(xt);
+
+    if (chart.data) {
+      const pts = chart.data.q.map((q, i) =>
+        xPos(q).toFixed(1) + "," + yPos(chart.data.y[i]).toFixed(1));
+      if (cfg.area) {
+        const d = "M" + xPos(chart.data.q[0]) + "," + baseY +
+          " L" + pts.join(" L") +
+          " L" + xPos(chart.data.q[chart.data.q.length - 1]) + "," + baseY + " Z";
+        svg.appendChild(svgEl("path", {
+          d, fill: "var(" + cfg.colorVar + ")", "fill-opacity": "0.1", stroke: "none",
+        }));
+      }
+      svg.appendChild(svgEl("path", {
+        class: "series-line",
+        d: "M" + pts.join(" L"),
+        stroke: "var(" + cfg.colorVar + ")",
+      }));
+    }
+
+    // 現在の q マーカーとクロスヘア
+    chart.parts.qline = svgEl("line", {
+      class: "qline", y1: M.top, y2: baseY, x1: 0, x2: 0, visibility: "hidden",
+    });
+    chart.parts.qdot = svgEl("circle", {
+      class: "qdot", r: 4.5, fill: "var(" + cfg.colorVar + ")", visibility: "hidden",
+    });
+    chart.parts.cross = svgEl("line", {
+      class: "crosshair", y1: M.top, y2: baseY, x1: 0, x2: 0, visibility: "hidden",
+    });
+    svg.appendChild(chart.parts.qline);
+    svg.appendChild(chart.parts.cross);
+    svg.appendChild(chart.parts.qdot);
+
+    // ポインタ用オーバーレイ（ヒット領域はプロット全体）
+    const ov = svgEl("rect", {
+      class: "overlay-rect",
+      x: M.left, y: M.top,
+      width: chart.W - M.left - M.right, height: plotH,
+      fill: "transparent",
+    });
+    svg.appendChild(ov);
+    root.appendChild(svg);
+
+    const tt = document.createElement("div");
+    tt.className = "tooltip";
+    const ttQ = document.createElement("div");
+    ttQ.className = "tt-q";
+    const ttRow = document.createElement("div");
+    ttRow.className = "tt-row";
+    const ttKey = document.createElement("span");
+    ttKey.className = "tt-key";
+    ttKey.style.background = "var(" + cfg.colorVar + ")";
+    const ttVal = document.createElement("span");
+    ttVal.className = "tt-val";
+    const ttName = document.createElement("span");
+    ttName.className = "tt-name";
+    ttName.textContent = cfg.seriesName;
+    ttRow.append(ttKey, ttVal, ttName);
+    tt.append(ttQ, ttRow);
+    root.appendChild(tt);
+    chart.tooltip = { box: tt, q: ttQ, val: ttVal };
+
+    let scrubbing = false;
+    const idxFromEvent = (ev) => {
+      const rect = svg.getBoundingClientRect();
+      const px = (ev.clientX - rect.left) * (chart.W / rect.width);
+      const q = (px - M.left) / (chart.W - M.left - M.right);
+      return Math.round(Math.min(1, Math.max(0, q)) * sim.n);
+    };
+    ov.addEventListener("pointermove", (ev) => {
+      if (!sim) return;
+      const i = idxFromEvent(ev);
+      hoverAt(i, chart, ev);
+      if (scrubbing) setK(i);
+    });
+    ov.addEventListener("pointerdown", (ev) => {
+      if (!sim) return;
+      scrubbing = true;
+      ov.setPointerCapture(ev.pointerId);
+      setK(idxFromEvent(ev));
+    });
+    ov.addEventListener("pointerup", () => { scrubbing = false; });
+    ov.addEventListener("pointerleave", () => { if (!scrubbing) hoverAt(null); });
+
+    positionMarker();
+  }
+
+  function positionMarker() {
+    if (!sim || !chart.data || !chart.parts.qline) return;
+    const q = curK / sim.n;
+    const px = xPos(q);
+    const py = yPos(chart.data.y[curK]);
+    chart.parts.qline.setAttribute("x1", px);
+    chart.parts.qline.setAttribute("x2", px);
+    chart.parts.qline.setAttribute("visibility", "visible");
+    chart.parts.qdot.setAttribute("cx", px);
+    chart.parts.qdot.setAttribute("cy", py);
+    chart.parts.qdot.setAttribute("visibility", "visible");
+  }
+
+  function showCross(i) {
+    if (!chart.parts.cross || !sim) return;
+    if (i === null) {
+      chart.parts.cross.setAttribute("visibility", "hidden");
+      return;
+    }
+    const px = xPos(i / sim.n);
+    chart.parts.cross.setAttribute("x1", px);
+    chart.parts.cross.setAttribute("x2", px);
+    chart.parts.cross.setAttribute("visibility", "visible");
+  }
+
+  function showTooltip(i, ev) {
+    const tt = chart.tooltip;
+    if (!tt) return;
+    if (i === null || !chart.data) {
+      tt.box.style.display = "none";
+      return;
+    }
+    tt.q.textContent = "q = " + (i / sim.n).toFixed(3);
+    tt.val.textContent = cfg.yFmt(chart.data.y[i]);
+    tt.box.style.display = "block";
+    const rect = root.getBoundingClientRect();
+    let lx = ev.clientX - rect.left + 14;
+    const ly = ev.clientY - rect.top - 14;
+    if (lx + tt.box.offsetWidth > rect.width - 4) {
+      lx = ev.clientX - rect.left - tt.box.offsetWidth - 14;
+    }
+    tt.box.style.left = lx + "px";
+    tt.box.style.top = Math.max(0, ly) + "px";
+  }
+
+  chart.render = render;
+  chart.setData = (q, y) => { chart.data = { q, y }; render(); };
+  chart.positionMarker = positionMarker;
+  chart.showCross = showCross;
+  chart.showTooltip = showTooltip;
+  chartRegistry.push(chart);
+  return chart;
+}
+
+function hoverAt(i, sourceChart, ev) {
+  for (const c of chartRegistry) {
+    c.showCross(i);
+    if (c === sourceChart && ev) c.showTooltip(i, ev);
+    else c.showTooltip(null);
+  }
+}
+
+const chartS = createLineChart(document.getElementById("chart-s"), {
+  colorVar: "--s1",
+  seriesName: "S(q)/N",
+  fixedYMax: 1,
+  yFmt: (v) => v.toFixed(3),
+  yTickFmt: (v) => v.toFixed(1),
+  area: true,
+});
+const chartS2 = createLineChart(document.getElementById("chart-s2"), {
+  colorVar: "--s2",
+  seriesName: "⟨s⟩",
+  fixedYMax: null,
+  yFmt: (v) => v.toFixed(2),
+  yTickFmt: (v) => (Math.abs(v - Math.round(v)) < 1e-9 ? String(Math.round(v)) : v.toFixed(1)),
+  area: false,
+});
+
+/* ============ q の更新 ============ */
+function setK(k) {
+  if (!sim) return;
+  curK = Math.min(sim.n, Math.max(0, Math.round(k)));
+  els.q.value = curK;
+  const q = curK / sim.n;
+  els.qReadout.innerHTML = "";
+  const strong = document.createElement("strong");
+  strong.textContent = "q = " + q.toFixed(2);
+  els.qReadout.append(strong, "（" + curK + " / " + sim.n + " ノード除去）");
+
+  const info = drawNetwork();
+  els.tileQ.textContent = q.toFixed(2);
+  els.tileS1.textContent = (info.s1 / sim.n).toFixed(3);
+  els.tileS2.textContent = String(info.s2);
+  els.tileNc.textContent = String(info.ncomp);
+
+  for (const c of chartRegistry) c.positionMarker();
+}
+
+/* ============ アニメーション ============ */
+function stopPlay() {
+  playing = false;
+  els.play.textContent = "▶ 再生";
+}
+function tickPlay(ts) {
+  if (!playing || !sim) return;
+  if (playPrev) {
+    playAcc += ((ts - playPrev) / 1000) * (sim.n / 6);  // 全崩壊まで約 6 秒
+    const step = Math.floor(playAcc);
+    if (step > 0) {
+      playAcc -= step;
+      setK(curK + step);
+    }
+  }
+  playPrev = ts;
+  if (curK >= sim.n) { stopPlay(); return; }
+  requestAnimationFrame(tickPlay);
+}
+els.play.addEventListener("click", () => {
+  if (!sim) return;
+  if (playing) { stopPlay(); return; }
+  if (curK >= sim.n) setK(0);
+  playing = true;
+  playPrev = 0;
+  playAcc = 0;
+  els.play.textContent = "⏸ 停止";
+  requestAnimationFrame(tickPlay);
+});
+els.reset.addEventListener("click", () => { stopPlay(); setK(0); });
+els.q.addEventListener("input", () => { stopPlay(); setK(Number(els.q.value)); });
+
+/* ============ データ表 ============ */
+function buildTable() {
+  els.tableBody.textContent = "";
+  const step = Math.max(1, Math.round(sim.n / 50));
+  const rows = [];
+  for (let k = 0; k <= sim.n; k += step) rows.push(k);
+  if (rows[rows.length - 1] !== sim.n) rows.push(sim.n);
+  for (const k of rows) {
+    const tr = document.createElement("tr");
+    for (const txt of [
+      (k / sim.n).toFixed(3),
+      sim.S[k].toFixed(4),
+      sim.s2[k].toFixed(2),
+    ]) {
+      const td = document.createElement("td");
+      td.textContent = txt;
+      tr.appendChild(td);
+    }
+    els.tableBody.appendChild(tr);
+  }
+}
+
+/* ============ シミュレーション実行 ============ */
+function readParams() {
+  const model = els.model.value;
+  let p1 = 0, p2 = 0;
+  if (model === "ba") p1 = Number(els.baM.value);
+  else if (model === "er") p1 = Number(els.erC.value);
+  else { p1 = Number(els.wsK.value); p2 = Number(els.wsP.value); }
+  return {
+    model,
+    n: Math.min(1000, Math.max(20, Math.round(Number(els.n.value) || 300))),
+    p1, p2,
+    strategy: els.strategy.value,
+    trials: Math.min(30, Math.max(1, Math.round(Number(els.trials.value) || 1))),
+    seed: Math.round(Number(els.seed.value) || 0),
+  };
+}
+
+const MODEL_NAMES = {
+  ba: "Barabási–Albert",
+  er: "Erdős–Rényi",
+  ws: "Watts–Strogatz",
+};
+
+async function runSimulation() {
+  if (!pyRun) return;
+  stopPlay();
+  els.run.disabled = true;
+  els.run.textContent = "計算中…";
+  els.viz.classList.add("recomputing");
+  els.tiles.classList.add("recomputing");
+  // オーバーレイ描画を先に反映させてから重い計算に入る
+  await new Promise((r) => setTimeout(r, 30));
+  try {
+    const params = readParams();
+    const json = pyRun(JSON.stringify(params));
+    sim = JSON.parse(json);
+
+    els.q.max = sim.n;
+    els.netMeta.textContent =
+      MODEL_NAMES[params.model] + " ／ N = " + sim.n +
+      " ／ エッジ数 " + sim.meta.edges +
+      " ／ 平均次数 " + sim.meta.avg_deg.toFixed(2);
+    const sub = "試行平均（T = " + sim.meta.trials + "）";
+    els.chart1Sub.textContent = sub;
+    els.chart2Sub.textContent = sub + "・臨界点付近でピークを持ちます";
+
+    chartS.setData(sim.q, sim.S);
+    chartS2.setData(sim.q, sim.s2);
+    buildTable();
+    setK(0);
+  } catch (err) {
+    console.error(err);
+    alert("シミュレーションに失敗しました: " + err.message);
+  } finally {
+    els.viz.classList.remove("recomputing");
+    els.tiles.classList.remove("recomputing");
+    els.run.disabled = false;
+    els.run.textContent = "シミュレーション実行";
+  }
+}
+els.run.addEventListener("click", runSimulation);
+
+/* ============ モデル別パラメータの表示切替 ============ */
+els.model.addEventListener("change", () => {
+  for (const f of document.querySelectorAll(".field[data-model]")) {
+    f.hidden = f.dataset.model !== els.model.value;
+  }
+});
+
+/* ============ リサイズ・テーマ変更 ============ */
+let resizeTimer = null;
+new ResizeObserver(() => {
+  if (!sim) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    for (const c of chartRegistry) c.render();
+    setK(curK);
+  }, 100);
+}).observe(document.getElementById("viz"));
+
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (sim) setK(curK);
+});
+
+/* ============ 起動 ============ */
+async function boot() {
+  try {
+    els.loaderMsg.textContent = "Pyodide を読み込み中…（初回は数十秒かかります）";
+    pyodide = await loadPyodide({
+      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/",
+    });
+    els.loaderMsg.textContent = "networkx をインストール中…";
+    await pyodide.loadPackage(["networkx", "numpy"]);
+    pyodide.runPython(PYTHON_CODE);
+    pyRun = pyodide.globals.get("run_simulation");
+    els.loader.style.display = "none";
+    await runSimulation();
+  } catch (err) {
+    console.error(err);
+    els.loaderMsg.textContent = "読み込みに失敗しました: " + err.message;
+  }
+}
+boot();
+</script>
+</body>
+</html>
