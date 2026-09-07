@@ -1,0 +1,8 @@
+{
+  "networks": [
+    { "file": "BA.net", "label": "Scale-Free (N=100, m=2)" },
+    { "file": "RR.net", "label": "Random Regular (N=100, d=4)" },
+    { "file": "lattice.net", "label": "Square Lattice (N=100, Periodic Boundary Condition)" },
+    { "file": "karate.net", "label": "Zachary Karate Club (N=34)" }
+  ]
+}

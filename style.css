@@ -1,0 +1,327 @@
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --s1: #2a78d6;    /* 最大連結成分 */
+  --s2: #eb6834;    /* 第二最大連結成分 */
+  --qc: #1d8f5a;    /* 臨界値 q_c */
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --ink-muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --s1: #3987e5;
+    --s2: #d95926;
+    --qc: #34b678;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --ink-muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --s1: #3987e5;
+  --s2: #d95926;
+  --qc: #34b678;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+}
+main {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+header h1 {
+  font-size: 22px;
+  font-weight: 650;
+  margin: 0 0 4px;
+}
+header p {
+  margin: 0 0 20px;
+  color: var(--ink-2);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+/* ---- KaTeX 数式 ---- */
+.katex { font-size: 1.06em; }
+.katex-display { margin: 8px 0; }
+
+/* ---- コントロール ---- */
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+  margin-bottom: 16px;
+}
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field > span { font-size: 12px; color: var(--ink-2); }
+.field select, .field input[type="number"] {
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--axis);
+  border-radius: 6px;
+  padding: 5px 8px;
+  min-width: 72px;
+}
+button {
+  font: inherit;
+  border-radius: 6px;
+  padding: 7px 16px;
+  cursor: pointer;
+  border: 1px solid var(--axis);
+  background: var(--surface);
+  color: var(--ink);
+}
+button.primary {
+  background: var(--s1);
+  border-color: var(--s1);
+  color: #ffffff;
+  font-weight: 600;
+}
+button:disabled { opacity: 0.5; cursor: default; }
+
+/* ---- q スライダー ---- */
+#slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+#slider-row input[type="range"] {
+  flex: 1;
+  min-width: 120px;
+  accent-color: var(--s1);
+}
+#q-readout {
+  font-variant-numeric: tabular-nums;
+  min-width: 15em;
+  color: var(--ink-2);
+}
+#q-readout strong { color: var(--ink); font-weight: 650; }
+
+/* ---- 統計タイル ---- */
+#tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.tile .label { font-size: 12px; color: var(--ink-2); }
+.tile .value { font-size: 20px; font-weight: 600; line-height: 1.3; font-variant-numeric: tabular-nums; }
+#tiles-note {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin: 0 0 6px;
+}
+
+/* ---- 可視化グリッド ---- */
+#viz {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+/* ネットワークカードは右列(2 つのチャートカード)と同じ高さに伸ばし、
+   余った縦幅をすべてキャンバスに割り当てる */
+#net-card {
+  display: flex;
+  flex-direction: column;
+}
+.card h2 {
+  font-size: 14px;
+  font-weight: 650;
+  margin: 0 0 2px;
+}
+.card .sub {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin: 0 0 10px;
+}
+/* 頑健性指標 R・臨界値 q_c の表示 */
+#chart1-sub, #chart2-sub {
+  font-size: 17px;
+  color: var(--ink);
+  font-weight: 600;
+  padding-left: 1em;    /* 見出しからの字下げ */
+}
+#chart1-sub .katex, #chart2-sub .katex { font-size: 1.15em; }
+#net-canvas-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 320px;
+}
+#net-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+#net-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+#net-legend .key {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+#net-meta { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+#charts { display: flex; flex-direction: column; gap: 16px; }
+
+/* ---- チャート ---- */
+.chart-box { position: relative; }
+.chart-box svg { display: block; width: 100%; }
+.chart-box .overlay-rect { cursor: crosshair; }
+.gridline { stroke: var(--grid); stroke-width: 1; }
+.axisline { stroke: var(--axis); stroke-width: 1; }
+.ticktext {
+  fill: var(--ink-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.axistitle { fill: var(--ink-2); font-size: 11px; }
+.series-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.crosshair { stroke: var(--ink-muted); stroke-width: 1; }
+.qline { stroke: var(--axis); stroke-width: 1; }
+.qdot { stroke: var(--surface); stroke-width: 2; }
+.qcline { stroke: var(--qc); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.qclabel { fill: var(--qc); font-size: 11px; }
+.tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  white-space: nowrap;
+  z-index: 5;
+  display: none;
+}
+.tooltip .tt-q { color: var(--ink-2); margin-bottom: 2px; }
+.tooltip .tt-row { display: flex; align-items: center; gap: 6px; }
+.tooltip .tt-key { display: inline-block; width: 12px; height: 2px; border-radius: 1px; }
+.tooltip .tt-val { font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
+.tooltip .tt-name { color: var(--ink-2); }
+
+/* ---- ネットワークデータの説明・指標の定義 ---- */
+#data-desc, #defs { margin-top: 16px; }
+#data-desc summary, #defs summary { cursor: pointer; color: var(--ink-2); }
+#data-desc code {
+  font-size: 0.92em;
+  background: var(--grid);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+.defs-body { color: var(--ink-2); max-width: 780px; }
+.defs-body p { margin: 12px 0 8px; }
+.defs-body ul { margin: 0; padding-left: 20px; }
+.defs-body li { margin: 6px 0; }
+.defs-body strong { color: var(--ink); font-weight: 600; }
+
+/* ---- 待機状態（ネットワーク・攻撃方法が未選択、または未実行） ---- */
+#net-placeholder {
+  display: none;
+  flex: 1 1 auto;
+  min-height: 320px;
+  margin: 0;
+  padding: 16px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-wrap: balance;
+  color: var(--ink-muted);
+  border: 1px dashed var(--axis);
+  border-radius: 8px;
+}
+body.is-idle #net-placeholder { display: flex; }
+body.is-idle #net-canvas-wrap,
+body.is-idle #net-legend,
+body.is-idle #net-meta { display: none; }
+body.is-idle .tile .value,
+body.is-idle #q-readout,
+body.is-idle #q-readout strong,
+body.is-idle #chart1-sub,
+body.is-idle #chart2-sub { color: var(--ink-muted); }
+
+/* ---- ローディング ---- */
+#loader {
+  position: fixed;
+  inset: 0;
+  background: var(--page);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  z-index: 100;
+}
+#loader .spin {
+  width: 28px; height: 28px;
+  border: 3px solid var(--grid);
+  border-top-color: var(--s1);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#loader p { color: var(--ink-2); margin: 0; max-width: 560px; text-align: center; padding: 0 16px; }
+.recomputing { opacity: 0.45; transition: opacity 0.15s; }
+
+footer {
+  margin-top: 24px;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+@media (max-width: 920px) {
+  #viz { grid-template-columns: 1fr; }
+  /* 1 列表示では高さを揃える相手がいないので、幅に対する比率で決める */
+  #net-canvas-wrap { flex: 0 0 auto; height: clamp(320px, 85vw, 560px); }
+  #tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #slider-row { flex-wrap: wrap; }
+}
+@media (max-width: 560px) {
+  #tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
