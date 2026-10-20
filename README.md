@@ -43,7 +43,7 @@ networks.json           読み込み可能なネットワークの一覧
 
 ## ネットワークの追加方法
 
-1. Pajek 形式の `.net` ファイルを `index.html` と同じディレクトリに置く
+1. [Pajek](https://ds9.jaist.ac.jp/ResearchData/presen/Pajekman.pdf) 形式の `.net` ファイルを `index.html` と同じディレクトリに置く
 2. `networks.json` にエントリを追加する
 
 ```json
